@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Galaxy exploration pipelines</title>
+    <!-- development version, includes helpful console warnings -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.20/lodash.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-BmbxuPwQa2lc/FVzBcNJ7UAyJxM6wuqIj61tLrc4wSX0szH/Ev+nYRRuWlolflfl" crossorigin="anonymous">
+
+    <link rel="icon" type="image/jpeg" href="icon.jpeg" />
+    <link rel="stylesheet" href="exploration.css">
+
+
+</head>
+
+<body>
+    <div id="app">
+        <div class="container-fluid">
+            <div class="row full-height">
+                <div class="col-md-8 h-100 overflow-auto">
+                    <div v-if="swapExecuted" class="row">
+                        <div class="col-12">
+                            <h2>Current pipeline - Step: {{stepCounter }}
+                            </h2>
+                        </div>
+                    </div>
+                    <div v-if="swapExecuted" class="mb-3 row">
+                        <div class="col-12" style="display: -webkit-inline-box;overflow: auto">
+
+                            <!-- <div class="card-group"> -->
+                            <div class="card" v-for="item in history" :key="history.indexOf(item)"
+                                v-bind:id="'operation-'+history.indexOf(item)">
+                                <div class="card-body"
+                                    v-bind:class="{last_operation:history.indexOf(item) == (history.length -1) }">
+                                    <img style="width:45px; height:45px"
+                                        v-bind:src="'/dora-summaries/img/'+item.operator+'.png' ">
+                                </div>
+                                <div class="card-footer p-1">
+                                    <small class="text-muted">unif: {{Math.round(item.uniformity * 1000) / 1000}}
+                                    </small><br />
+                                    <small class="text-muted">div: {{Math.round(item.distance * 1000) / 1000}}
+                                    </small><br />
+                                    <small class="text-muted">nov: {{Math.round(item.novelty * 1000) / 1000}}
+                                    </small><br />
+                                    <small class="text-muted">util: {{Math.round(item.utility * 1000) /
+                                        1000}}</small>
+
+                                </div>
+                            </div>
+                            <!-- </div> -->
+                            <!-- </div> -->
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12">
+                            <h2>Current operator results
+                                <span class="badge bg-info" v-if="uniformity !== null">Uniformity:
+                                    {{uniformity.toFixed(4)}}</span>
+                                <span class="badge bg-info" v-if="novelty !== null">Novelty:
+                                    {{novelty.toFixed(4)}}</span>
+                                <span class="badge bg-info" v-if="distance !== null">Diversity:
+                                    {{distance.toFixed(6)}}</span>
+                                <span class="badge bg-info" v-if="utility !== null">Utility:
+                                    {{utility.toFixed(6)}}</span>
+                                <span class="badge bg-info"
+                                    v-if="utility !== null">&alpha;:{{utilityWeights[0].toFixed(2)}}
+                                    &beta;:{{utilityWeights[1].toFixed(2)}}
+                                    &gamma;:{{utilityWeights[2].toFixed(2)}}</span>
+                            </h2>
+                        </div>
+                        <div class="col-12 overflow-auto"
+                            :style="[swapExecuted ? {'style': 'height:75vh'} : {'style': 'height:93vh'} ]"
+                            v-if="sets.length >0">
+                            <div v-for="set in sets" :key="set.id" v-on:click.stop="setClicked(set)"
+                                v-bind:class="{row:true, selectable:true, selected:set.id == selectedSetId}"
+                                style="max-width:99%" class="m-1" v-bind:id="'set-'+set.id">
+                                <div class=" col-12 ">
+                                    <h5>
+                                        <span class="badge bg-success">{{set.length}}
+                                            items</span>
+                                        <span class="badge bg-info" v-if="set.uniformity !== null">uniformity:
+                                            {{set.uniformity.toFixed(4)}}</span>
+                                        <!-- <span class="badge bg-info" v-if="set.novelty !== null">novelty:
+                                            {{set.novelty.toFixed(4)}}</span> -->
+
+                                        <span v-for="item in set.predicate" class="badge me-1 bg-dark">
+                                            {{item.dimension.replace(dataset+'.','')}}
+                                            = {{item.value}}</span>
+
+                                    </h5>
+                                    <template v-if="dataset == 'galaxies'">
+                                        <img class="zoom" v-for="item in set.data" :key="item.message" :src=url(item)>
+                                    </template>
+                                    <template v-else>
+                                        <ul v-for='i in 4' class="list-group list-group-horizontal">
+                                            <template v-for='j in 10'>
+                                                <li v-if="set.data.length > ((i-1)*10+(j-1))"
+                                                    class="list-group-item flex-fill list-group-item-action  ">
+                                                    {{set.data[((i-1)*10+(j-1))].author_name}}
+                                                </li>
+                                                <li v-else class="list-group-item flex-fill list-group-item-action  ">-
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mh-95 scrollable" v-else>
+                            Nothing to show yet!
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 h-100 overflow-auto">
+                    <div v-if="swapExecuted" class="row mb-3">
+                        <div class="col-md-12 col-xl-12">
+                            <h2>Summarization mode </h2>
+                            <div class="mb-3  row">
+                                <div class="col-sm-12">
+                                    <label for="guidanceMode" class="form-label">Guidance mode</label>
+                                    <select v-model="guidanceMode" id="guidanceMode" class="form-select"
+                                        v-on:change="guidanceModeChange" :disabled="loading">
+                                        <option>Fully guided</option>
+                                        <option>Partially guided</option>
+                                        <option>Manual</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div v-if="guidanceMode != 'Manual'" class="mb-3  row">
+                                <div class="col-sm-12">
+                                    <label for="guidanceAlgorithm" class="form-label">Summarization algorithm</label>
+                                    <select v-model="guidanceAlgorithm" id="guidanceAlgorithm" class="form-select"
+                                        v-on:change="guidanceAlgorithmChange" :disabled="loading">
+                                        <option>RLSum</option>
+                                        <option>Top1Sum</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div v-if="guidanceMode != 'Manual'" class="mb-3  row">
+                                <div class="col-sm-12">
+                                    <label for="guidanceWeightMode" class="form-label">Summarization weights</label>
+                                    <select v-model="guidanceWeightMode" id="guidanceWeightMode" class="form-select"
+                                        v-on:change="guidanceWeightModeChange" :disabled="loading">
+                                        <option value="increasing">Increasing novelty</option>
+                                        <option value="decreasing">Decreasing novelty</option>
+                                        <option value="high">High novelty</option>
+                                        <option value="low">Low novelty</option>
+                                        <option value="balanced">Balanced novelty</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <!-- <template v-if="guidanceMode !== 'Manual'">
+                                <h2>
+                                    Model selection
+                                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
+                                        data-bs-target="#model-details-modal">
+                                        Under the hood
+                                    </button>
+                                </h2>
+                                <div class="modal fade" id="model-details-modal" tabindex="-1"
+                                    aria-labelledby="exampleModalLabel" aria-hidden="true">
+                                    <div class="modal-dialog modal-xl modal-fullscreen-xl-down">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="exampleModalLabel">Model {{targetSet}}
+                                                    {{curiosityWeight}}</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                                    aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <img src="img/scattered-0.5.png" class="w-100">
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary"
+                                                    data-bs-dismiss="modal">Close</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3 row">
+                                    <label class="col-5 col-form-label" for="targetSet">Target set</label>
+                                    <div class="col-sm-7">
+                                        <select v-model="targetSet" id="targetSet" class="form-select"
+                                            :disabled="loading">
+                                            <option>Scattered</option>
+                                            <option disabled>Concentrated</option>
+                                            <option disabled>Mixed</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3 row">
+                                    <label for="curiosityWeight" class="col-5 col-form-label">Curiosity weight:
+                                        <b>{{curiosityWeight}}</b></label>
+                                    <div class="col-sm-7">
+                                        <input type="range" v-model="curiosityWeight" class="form-range " min="0"
+                                            max="1.0" step="0.25" id="curiosityWeight" :disabled="loading">
+                                    </div>
+                                </div>
+                                <div class="mb-3 row">
+                                    <div class="col-sm-12">
+                                        <button class="btn btn-primary" @click.prevent="loadModel"
+                                            v-if="loadedTargetSet!=null & (loadedTargetSet != targetSet | loadedCuriosityWeight != curiosityWeight)"
+                                            :disabled="loading">Load
+                                            model
+                                        </button>
+                                    </div>
+                                </div>
+                            </template> -->
+                        </div>
+                    </div>
+
+
+
+                    <template v-if="!loading">
+                        <template v-if="!swapExecuted">
+                            <div class="mb-3  row">
+                                <div class="col-md-12 col-xl-12">
+                                    <h2>Summary parameters</h2>
+                                    <form>
+                                        <!-- <div class="mb-3">
+                                            <label for="minSetSize" class="form-label">Minimal set size</label>
+                                            <input type="number" class="form-control" id="minSetSize" min=10 step=10
+                                                placeholder="minimal set size" v-model="minSetSize">
+                                        </div> -->
+                                        <div class="mb-3">
+                                            <label for="minUniformity" class="form-label">Minimal set uniformity</label>
+                                            <input type="number" step=0.1 class="form-control" id="minUniformity"
+                                                placeholder="Minimal set uniformity" v-model="minUniformity">
+                                        </div>
+                                        <!-- <div class="mb-3">
+                                            <label for="resultSetCount" class="form-label">Number of sets to
+                                                return</label>
+                                            <input type="number" step=1 min=2 class="form-control" id="resultSetCount"
+                                                placeholder="Number of sets to return" v-model="resultSetCount">
+                                        </div> -->
+
+                                        <div class="mb-3">
+                                            <button class="btn btn-primary" @click.prevent="getSwapSummary">Execute!
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+
+                        </template>
+                        <template v-else-if="guidanceMode !== 'Fully guided'">
+                            <div class="mb-3  row">
+                                <div class="col-md-12 col-xl-12">
+                                    <!-- <template v-if="inputSet !== null">
+                                        <h2>Previous input set</h2>
+                                        <span v-if="inputSet === null">Complete dataset</span>
+                                        <h6 v-else>Set {{inputSet.id}}
+                                            <span class="badge bg-success">{{inputSet.length}}
+                                                galaxies</span>
+                                            <span v-for="item in inputSet.predicate"
+                                                class="badge bg-info">{{item.dimension.replace('galaxies.','')}}
+                                                = {{item.value}}</span>
+                                        </h6>
+                                    </template> -->
+                                    <h2>Operator selection</h2>
+                                    <form>
+                                        <div class="mb-3">
+                                            <select v-model="operator" id="operator" class="form-select">
+                                                <option disabled value="">Please select one</option>
+                                                <option>by_facet</option>
+                                                <option :disabled="selectedSetPredicateCount < 2">by_superset</option>
+                                                <option :disabled=" sets.length==0">by_neighbors</option>
+                                                <option :disabled="selectedSetPredicateCount < 2">by_distribution
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3" v-if="operator == 'by_facet'">
+                                            <label class="form-label">Select the dimensions to group on</label>
+                                            <template v-for="dimension in facetDimensions">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" :id="dimension"
+                                                        :value="dimension" v-model="checkedDimension">
+                                                    <label class="form-check-label" for="dimension"
+                                                        v-if="dimension.length == 1">
+                                                        magnitude {{dimension}}
+                                                    </label>
+                                                    <label class="form-check-label" for="dimension" v-else>
+                                                        {{dimension}}
+                                                    </label>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <div class="mb-3" v-if="operator == 'by_neighbors'">
+                                            <label class="form-label">Select on which dimensions</label><br />
+                                            <template v-for="dimension in neighborsDimensions">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" :id="dimension"
+                                                        :value="dimension" v-model="checkedDimension">
+                                                    <label class="form-check-label" for="dimension"
+                                                        v-if="dimension.length == 1">
+                                                        magnitude {{dimension}}
+                                                    </label>
+                                                    <label class="form-check-label" for="dimension" v-else>
+                                                        {{dimension}}
+                                                    </label>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <div class="mb-3">
+                                            <button class="btn btn-primary" @click.prevent="submitted"
+                                                v-if="operator !== ''">Execute!
+                                            </button>
+                                            <button type="button" class="btn btn-danger" @click.prevent="undo"
+                                                v-if="history.length > 1">Undo</button>
+                                        </div>
+
+                                    </form>
+                                </div>
+                            </div>
+
+
+
+                        </template>
+                        <template v-else>
+                            <div class="row">
+                                <div class="col-md-12 col-xl-12">
+                                    <h2>Exploration control</h2>
+                                </div>
+                                <div class="col-md-4">
+                                    <button v-if="!explorationRunning" type="button" class="btn btn-success mb-3"
+                                        @click.prevent="startExploration">Start exploration</button>
+                                    <button v-else type="button" class="btn btn-danger  mb-3"
+                                        @click.prevent="explorationRunning = False" :disabled="loading">stop
+                                        exploration</button>
+                                </div>
+                                <div class="col-md-8">
+                                    Next operation: <b>{{operator}}</b><b
+                                        v-if="operator == 'by_facet' | operator == 'by_neighbors'"> on
+                                        {{checkedDimension}}</b>
+                                </div>
+                                <div class="col-md-12" v-if="progress != -1">
+                                    <div class="progress mb-3">
+                                        <div class="progress-bar" role="progressbar"
+                                            v-bind:style="'width: '+progress*2+'%'" v-bind:aria-valuenow="progress"
+                                            aria-valuemin="0" aria-valuemax="50"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </template>
+                    <template v-else>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="mt-3 mb-4">
+                                    <button class="btn btn-primary" type="button" disabled>
+                                        <span class="spinner-grow spinner-grow-sm" role="status"
+                                            aria-hidden="true"></span>
+                                        Loading...
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+
+                    <div v-if="swapExecuted" class="mb-3 row">
+                        <div class="col-md-12">
+                            <div class="mb-1 row">
+                                <div class="col-12">
+                                    <h2>Pipeline management</h2>
+                                </div>
+                            </div>
+
+                            <div class="mb-1 row">
+                                <div class="col-12">
+                                    <a type="button" class="btn btn-primary" :href="saveLink"
+                                        download="galaxy-pipeline.json" :disabled="history.length ==0"
+                                        :disabled="loading">Save current
+                                        pipeline</a>
+                                </div>
+                            </div>
+                            <div class="mb-1 row">
+                                <div class="col-12">
+                                    <button type="button" class="btn btn-primary"
+                                        onclick="document.getElementById('selectedFile').click();">Load previous
+                                        pipeline<input type="file" id="selectedFile" style="display: none;"
+                                            accept=".json" v-on:change="loadPipeline($event)"
+                                            :disabled="loading" /></button>
+                                </div>
+                            </div>
+                            <div class="mb-1 row">
+                                <div class="col-12">
+                                    <div v-if="isLoading" class="alert alert-warning" role="alert">
+                                        Loading a pre-recorded pipeline. Any change will prevent further loading.
+                                        <span class="badge badge-light">{{ loadSteps.length}} operation(s)
+                                            remaining</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-1 row">
+                                <div class="col-12">
+                                    <button type="button" class="btn btn-primary" @click.prevent="restart"
+                                        :disabled="loading">Restart</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal fade" id="details-modal" tabindex="-1" aria-labelledby="exampleModalLabel"
+                            aria-hidden="true">
+                            <div class="modal-dialog modal-xl">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="exampleModalLabel">Details and graphs</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                            aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        Graphs and stuff...
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary"
+                                            data-bs-dismiss="modal">Close</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row" v-if="predictedScores.length > 0">
+                        <div class="col-12">
+                            <h2>Predicted utility scores</h2>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">set line</th>
+                                        <th scope="col">operation</th>
+                                        <th scope="col">attribute</th>
+                                        <th scope="col">uniformity</th>
+                                        <th scope="col">diversity</th>
+                                        <th scope="col">novelty</th>
+                                        <th scope="col">utility</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in predictedScores"
+                                        v-on:click="loadPrediction(item.setId, item.operation, item.attribute, true)"
+                                        :key="item.setId+item.operation+item.attribute"
+                                        v-bind:class="{predictedLine:true, selectedPrediction: isSelectedPrediction(item.setId, item.operation, item.attribute)}">
+                                        <td>{{ _.map(sets, 'id').indexOf(item.setId) +1 }}</td>
+                                        <td>{{ item.operation }}</td>
+                                        <td>{{ item.attribute }}</td>
+                                        <td>{{ item.uniformity.toFixed(4) }}</td>
+                                        <td>{{ item.distance.toFixed(4) }}</td>
+                                        <td>{{ item.novelty.toFixed(4) }}</td>
+                                        <td>{{ item.utility.toFixed(4) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
+        integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-b5kHyXgcpbZJO/tY9Ul7kGkf1S0CWuKcCD38l8YkeH8z8QjE0GmW1gYU5S9FOnJ0"
+        crossorigin="anonymous"></script>
+    <script src="exploration.js"></script>
+</body>
+
+</html>
